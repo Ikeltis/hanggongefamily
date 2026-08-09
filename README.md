@@ -117,32 +117,6 @@ python hzgh_login.py --check
 > 无论哪种，都**不要给它设定时（cron）**——它是手动运行的取码工具。
 > 走订阅时它会作为一个「任务」出现，请把该任务的**定时留空 / 禁用**，只保留手动运行。
 
-### 另一种取码方式：QuantumultX 抓包（推荐给已在手机上登录 App 的人）
-
-若你手机已装并登录了「杭工e家」App，可以用 QuantumultX 的 rewrite **自动抓 `ses_id`**，
-免去反复走短信登录。原理：`ses_id` 在请求体里是明文传输的，读一下即可，无需解密。
-
-> ⚠️ **只能抓 `ses_id`，抓不到 `login_name`。** `login_name` 不是手机号，而是一枚
-> 长期不变的用户令牌；它在请求里是 3DES 密文，且**每次请求换一把随机会话密钥**
-> （由服务器公钥保护），所以既不能照抄复用、也无法在抓包端解密。
-> `login_name` 请用 `hzgh_login.py` 登录一次拿到明文（长期不变，基本一劳永逸），
-> 之后只用 QX 刷新 `ses_id` 即可。
-
-文件在 `quantumultx/` 目录：
-- `hzgh_qx.js`：rewrite 脚本，抓到 `ses_id` 存本地并弹通知（脚本内**无任何密钥**）
-- `hzgh.snippet`：`rewrite_local` + `mitm` 配置片段
-
-步骤：
-1. 把 `hzgh_qx.js` 放到一个**可公开访问的地址**（公开 Gist / 公开仓库的 raw；本私有仓库的 raw 链接 QX 拉不到）
-2. 按 `hzgh.snippet` 把 rewrite 与 `mitm hostname = app.hzgh.org.cn` 加进 QX 配置，`<脚本地址>` 换成上面的 URL
-3. 开启 QX 的 MITM（需信任其 CA 证书）
-4. 打开「杭工e家」App，随便点一下（刷新积分/我的）
-5. QX 弹出通知，里面就是 `ses_id`，复制到面板环境变量 `HZGH_SES_ID`
-6. `HZGH_LOGIN_NAME` 用 `hzgh_login.py` 取一次即可（见上一节），之后长期不用再动
-
-> ⚠️ 若 App 做了**证书固定（certificate pinning）**，普通 MITM 会失败（请求连不上），
-> 那就改用 `hzgh_login.py` 走短信登录取码。
-
 ---
 
 ## 四、定时（cron）建议
