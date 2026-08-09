@@ -1,0 +1,17 @@
+# 杭工e家 · QuantumultX 抓取 ses_id 配置片段
+# ============================================================
+# 用法：把下面两段分别并入 QuantumultX 配置的对应小节，
+#       或作为「重写(Rewrite)」远程资源订阅整段导入。
+#
+# 把 <脚本地址> 换成 hzgh_qx.js 的可访问 URL：
+#   - 本仓库是私有的，raw.githubusercontent 私有链接 QX 拉不到；
+#   - 推荐把 hzgh_qx.js 放到一个「公开 Gist」或公开仓库，用其 raw 地址（脚本内无任何密钥，公开无风险）；
+#   - 或用 QX 支持的本地脚本路径。
+# ============================================================
+
+[rewrite_local]
+# 匹配「杭工e家」后端接口的所有请求，读取请求体里的 ses_id
+^https?:\/\/app\.hzgh\.org\.cn\/unionApp\/interf\/front\/ url script-request-body <脚本地址>/hzgh_qx.js
+
+[mitm]
+hostname = app.hzgh.org.cn
