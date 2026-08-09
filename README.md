@@ -110,6 +110,13 @@ python hzgh_login.py --check
 4. 成功后工具直接打印 `HZGH_LOGIN_NAME` 和 `HZGH_SES_ID`，复制到面板「环境变量」即可
 5. 以后 `ses_id` 失效（签到开始报错），重跑一次本工具、更新 `HZGH_SES_ID` 即可
 
+> ⚠️ `hzgh_login.py` 要能在面板里运行，就得先出现在**脚本列表**里。两种方式二选一：
+> - **订阅**：把它放进 `ql repo` 的「依赖」段（第 4 段），拉取但**不自动建 cron**（见第五节）；
+> - **手动**：在面板脚本编辑器里单独上传这一个文件。
+>
+> 无论哪种，都**不要给它设定时（cron）**——它是手动运行的取码工具，
+> 若被建成了任务，请把该任务的定时关掉 / 禁用，只保留手动运行。
+
 ---
 
 ## 四、定时（cron）建议
@@ -128,20 +135,23 @@ python hzgh_login.py --check
 ## 五、用订阅方式拉取（可选）
 
 本项目已发布在 `https://github.com/Ikeltis/hanggongefamily`（私有仓库）。
-可在面板「订阅」中按青龙 `ql repo` 约定拉取，
-让 `hzgh_signin.js` / `hzgh_exchange.js` 自动成为任务、库文件仅作依赖：
+可在面板「订阅」中按青龙 `ql repo` 约定拉取，让 `hzgh_signin.js` / `hzgh_exchange.js`
+自动成为任务，库文件与登录工具仅作依赖拉取（不建 cron）：
 
 ```
-ql repo https://github.com/Ikeltis/hanggongefamily.git "hzgh_signin|hzgh_exchange" "" "hzgh_lib_|sendNotify" "main"
+ql repo https://github.com/Ikeltis/hanggongefamily.git "hzgh_signin|hzgh_exchange" "" "hzgh_lib_|sendNotify|hzgh_login" "main"
 ```
 
 > 私有仓库拉取需在面板配置带凭据的地址，例如
 > `https://<用户名>:<token>@github.com/Ikeltis/hanggongefamily.git`。
 
-- 白名单（第 2 段）：`hzgh_signin|hzgh_exchange` → 变成任务
-- 依赖规则（第 4 段）：`hzgh_lib_|sendNotify` → 拉取但不建任务
+- 白名单（第 2 段）：`hzgh_signin|hzgh_exchange` → 变成定时任务
+- 依赖规则（第 4 段）：`hzgh_lib_|sendNotify|hzgh_login` → **拉取到脚本列表但不建 cron**
+  - 其中 `hzgh_login`(取码工具)会出现在脚本列表里、可手动运行，但**不会**被排定时——正合所需
+- 改了订阅规则或仓库有新提交后，要在「订阅」里**重新运行一次**才会同步到面板
 
-也可以直接在面板脚本编辑器里手动新建/上传这 7 个文件，然后配置环境变量与 cron。
+也可以直接在面板脚本编辑器里手动新建/上传这些文件（7 个 JS/库 + `hzgh_login.py`），
+然后配置环境变量与 cron；登录工具单独上传、保持手动运行即可。
 
 ---
 
