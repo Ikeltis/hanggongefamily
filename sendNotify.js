@@ -17,6 +17,8 @@
 const https = require('https');
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { URL } = require('url');
 
 function request(method, urlStr, { headers = {}, body = null, timeout = 10000 } = {}) {
@@ -140,7 +142,47 @@ async function feishu(title, content) {
 }
 
 /**
- * 推送到所有已配置的通道。未配置任何通道时仅打印到控制台（面板日志里可见）。
+ * 加载呆呆面板托管的 sendNotify.js（scripts 根目录那个）。
+ *
+ * 面板会给任务进程注入 DAIDAI_SCRIPTS_DIR / DAIDAI_NOTIFY_URL / DAIDAI_NOTIFY_TOKEN，
+ * 托管版据此 POST /api/notifications，走面板「通知设置」里已配好的渠道 —— 也就是说
+ * 用户不必把 TG_BOT_TOKEN 之类再往环境变量里抄一份。
+ *
+ * 为什么按绝对路径加载、而不是 require('sendNotify')：
+ * 面板给 Module._resolveFilename 打了别名补丁，但它在「本目录已存在同名文件」时会主动
+ * 让路（见面板托管版源码）。本文件正是那个同名文件，所以别名会绕回自己，成死循环。
+ *
+ * 返回 null 表示不在面板环境里（青龙、本地直跑等），调用方自行降级为打印。
+ *
+ * @returns {{sendNotify: Function}|null}
+ */
+function loadPanelManagedNotify() {
+    const candidates = [];
+    if (process.env.DAIDAI_SCRIPTS_DIR) {
+        candidates.push(path.join(process.env.DAIDAI_SCRIPTS_DIR, 'sendNotify.js'));
+    }
+    // 脚本一般位于 scripts/<仓库目录>/，托管版在其上一级
+    candidates.push(path.join(__dirname, '..', 'sendNotify.js'));
+
+    for (const candidate of candidates) {
+        try {
+            const abs = path.resolve(candidate);
+            if (abs === path.resolve(__filename)) continue;      // 别把自己再加载一遍
+            if (!fs.existsSync(abs)) continue;
+            // 确认是面板托管版，避免误加载别处的同名文件
+            if (!fs.readFileSync(abs, 'utf8').includes('DAIDAI_PANEL_MANAGED_NOTIFY_HELPER')) continue;
+            const mod = require(abs);
+            if (mod && typeof mod.sendNotify === 'function') return mod;
+        } catch (_) {
+            // 单个候选失败不影响其他候选
+        }
+    }
+    return null;
+}
+
+/**
+ * 推送到所有已配置的通道。
+ * 都没配时先尝试交给面板自带的推送渠道，仍然不行才退化为打印到控制台。
  * @param {string} title 标题
  * @param {string} content 正文
  */
@@ -150,6 +192,18 @@ async function sendNotify(title, content) {
     const results = (await Promise.all(senders.map(fn => fn(title, content).catch(() => null)))).filter(Boolean);
 
     if (results.length === 0) {
+        // 没配任何环境变量渠道时，尝试交给面板自己的推送（呆呆面板「通知设置」里配的渠道）。
+        // 这样用户不必把 TG_BOT_TOKEN 之类再抄一份到环境变量里。
+        const managed = loadPanelManagedNotify();
+        if (managed) {
+            try {
+                await managed.sendNotify(title, content);
+                console.log('📤 已交由面板通知渠道推送');
+                return;
+            } catch (e) {
+                console.log(`⚠️  面板通知渠道推送失败：${e && e.message ? e.message : e}`);
+            }
+        }
         console.log('📭 未配置任何推送通道，消息仅打印如下：');
         console.log(`【${title}】\n${content}`);
         return;

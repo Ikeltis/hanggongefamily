@@ -61,9 +61,17 @@
 | `HZGH_EXCHANGE_MAX_MS` | `15000` | 最长持续时长(ms)，到点即停 |
 | `HZGH_EXCHANGE_MAX_ATTEMPTS` | `200` | 最大尝试次数 |
 
-### 可选（通知，配了哪个就推哪个；都不配则只打印日志）
+### 可选（通知，配了哪个就推哪个）
 `BARK_PUSH`、`TG_BOT_TOKEN`+`TG_USER_ID`、`PUSH_KEY`(Server酱)、`PUSH_PLUS_TOKEN`、
 `QYWX_KEY`(企业微信机器人)、`DD_BOT_TOKEN`(+`DD_BOT_SECRET`)、`FSKEY`(飞书)。
+
+> 📣 **这些一个都不配也能推**：`sendNotify.js` 会自动改用**面板自己的通知渠道**
+> （呆呆面板「通知设置」里配好的 Telegram/Bark/… 直接复用），不必把 token 再抄一份
+> 到环境变量里。原理是委托给面板托管的 `sendNotify.js`（scripts 根目录那个，
+> 由面板注入 `DAIDAI_NOTIFY_URL`/`DAIDAI_NOTIFY_TOKEN`，走 `POST /api/notifications`）。
+>
+> 优先级：环境变量渠道 > 面板托管渠道 > 仅打印日志。
+> 青龙等没有托管助手的环境会自动跳过这一层，行为与以前一致。
 
 ---
 
