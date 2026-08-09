@@ -191,6 +191,9 @@ def show_captcha(captcha_data):
     if not img:
         print("[-] 验证码响应里没有图片字段")
         return
+    # 服务端返回的 base64 自带换行（MIME 76 列风格），直接打印会跨几十行，
+    # 「复制下面一整行」就成了假话——粘到地址栏只会得到半张破图。这里压成真正的一行。
+    img = "".join(img.split())
     data_url = img if img.startswith("data:") else "data:image/jpeg;base64," + img
     print("\n" + "=" * 60)
     print("👇 复制下面一整行，粘到浏览器地址栏回车，即可看到图形验证码：")

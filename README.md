@@ -24,7 +24,7 @@
 | `requirements.txt` | 依赖 | `hzgh_login.py` 的 pip 依赖（requests、pycryptodome） |
 
 “任务”文件会被面板识别为定时任务，其余 `hzgh_lib_*` / `sendNotify.js` 是共享库。
-`hzgh_login.py` 是**手动运行**的取码工具（不是定时任务，见第六节）。
+`hzgh_login.py` 是**手动运行**的取码工具，**不能作为面板任务运行**（原因见「三点五、登录取码」）。
 
 ---
 
@@ -88,13 +88,41 @@ pip install -r requirements.txt
 ## 三点五、登录取码（获取 / 校验 ses_id）
 
 签到与抢券任务不含登录逻辑，需要你先登录拿到 `login_name` 与 `ses_id` 填进环境变量。
-**短信登录必须人工看图形验证码、输手机短信码，无法做成定时任务**，所以 `hzgh_login.py`
-是**手动运行**的工具——在面板的「终端 / 命令行」里跑，不要配 cron。
+登录要人工看图形验证码、输手机短信码，中途有**两次交互输入**。
+
+### ⚠️ 不能在面板里点「运行」
+
+面板的任务执行器不给脚本分配 stdin，`input()` 会立刻读到 EOF：
+
+```
+请输入登录手机号: Traceback (most recent call last):
+  ...
+  File "hzgh_login.py", line 269, in flow_sms
+    phone = input("请输入登录手机号: ").strip()
+EOFError: EOF when reading a line
+=== 退出码 1 ===
+```
+
+所以**必须用 `docker exec -it` 进容器跑**，才有真正的交互终端。
 
 ```bash
-# 短信验证码登录（默认）
-python hzgh_login.py
+# 呆呆面板（容器名 daidai-panel）
+docker exec -it daidai-panel \
+  /app/Dumb-Panel/deps/python/3.12/bin/python3 \
+  /app/Dumb-Panel/scripts/Ikeltis_hanggongefamily/hzgh_login.py
 
+# 青龙（容器名 qinglong）
+docker exec -it qinglong python3 /ql/data/scripts/Ikeltis_hanggongefamily/hzgh_login.py
+```
+
+> 💡 **注意 Python 解释器的选择**：面板「依赖管理」里 pip 装的包不在容器的系统
+> Python 里。呆呆面板装到独立 venv（形如 `/app/Dumb-Panel/deps/python/<版本>/`），
+> 直接用容器的 `python3` 会报 `ModuleNotFoundError: No module named 'requests'`。
+> 用 `docker exec <容器> ls /app/Dumb-Panel/deps/python/` 确认实际版本号。
+
+其他用法（同样要 `docker exec -it`，下面省略前缀）：
+
+```bash
 # 密码登录
 python hzgh_login.py --password
 
@@ -102,20 +130,33 @@ python hzgh_login.py --password
 python hzgh_login.py --check
 ```
 
+`--check` 是唯一无交互的用法，可以不带 `-it`，方便脚本化检查：
+
+```bash
+docker exec -e HZGH_LOGIN_NAME='...' -e HZGH_SES_ID='...' daidai-panel \
+  /app/Dumb-Panel/deps/python/3.12/bin/python3 \
+  /app/Dumb-Panel/scripts/Ikeltis_hanggongefamily/hzgh_login.py --check
+```
+
 流程（短信登录）：
 
 1. 输入手机号 → 工具打印一行 `data:image/jpeg;base64,...`
-2. **把这一整行粘到浏览器地址栏回车**，就能看到图形验证码（面板终端看不了图片文件，故用 data URL）
+2. **把这一整行粘到浏览器地址栏回车**，就能看到图形验证码（终端里看不了图片文件，故用 data URL）
 3. 输入图形验证码 → 手机收到短信 → 输入短信验证码
 4. 成功后工具直接打印 `HZGH_LOGIN_NAME` 和 `HZGH_SES_ID`，复制到面板「环境变量」即可
 5. 以后 `ses_id` 失效（签到开始报错），重跑一次本工具、更新 `HZGH_SES_ID` 即可
 
-> ⚠️ `hzgh_login.py` 要能在面板里运行，就得先出现在**脚本列表**里。两种方式二选一：
-> - **订阅**：把它和两个任务并列放进 `ql repo` 的**白名单**（第 2 段），它才会进脚本列表（见第五节）；
-> - **手动**：在面板脚本编辑器里单独上传这一个文件。
->
-> 无论哪种，都**不要给它设定时（cron）**——它是手动运行的取码工具。
-> 走订阅时它会作为一个「任务」出现，请把该任务的**定时留空 / 禁用**，只保留手动运行。
+> 💡 图形验证码**填错不会白发短信**——服务端先校验图形码，错了直接返回失败，
+> 重新跑一遍即可，不消耗短信次数。
+
+> 📌 第 2 步的 data URL 以前是跨几十行的（服务端返回的 base64 自带 MIME 换行），
+> 「复制一整行」根本做不到，粘过去只有半张破图。现已在 `show_captcha()` 里把
+> base64 压成真正的一行，照上面做即可。
+
+> ⚠️ **不要把 `hzgh_login.py` 放进订阅白名单。** 放白名单会被面板自动建成任务，
+> 而且默认给排 `0 0 * * *`（README 旧版让你「把定时留空/禁用」，但面板并不会留空），
+> 结果就是每天零点准时失败一次。正确做法是放进**依赖段**——文件照样落盘可供
+> `docker exec` 使用，但不会生成任务。详见第五节。
 
 ---
 
@@ -135,21 +176,26 @@ python hzgh_login.py --check
 ## 五、用订阅方式拉取（可选）
 
 本项目已发布在 `https://github.com/Ikeltis/hanggongefamily`（私有仓库）。
-可在面板「订阅」中按青龙 `ql repo` 约定拉取。`hzgh_login` 也放进白名单（与两个任务并列），
-这样它才会出现在**脚本列表**里可手动运行；库文件走依赖段：
+可在面板「订阅」中按青龙 `ql repo` 约定拉取。**白名单只放两个真正的定时任务**，
+`hzgh_login.py` 和库文件一起走依赖段：
 
 ```
-ql repo https://github.com/Ikeltis/hanggongefamily.git "hzgh_signin|hzgh_exchange|hzgh_login" "" "hzgh_lib_|sendNotify" "main"
+ql repo https://github.com/Ikeltis/hanggongefamily.git "hzgh_signin|hzgh_exchange" "" "hzgh_lib_|sendNotify|hzgh_login" "main"
 ```
 
 > 私有仓库拉取需在面板配置带凭据的地址，例如
 > `https://<用户名>:<token>@github.com/Ikeltis/hanggongefamily.git`。
 
-- 白名单（第 2 段）：`hzgh_signin|hzgh_exchange|hzgh_login` → 进脚本列表
-  - `hzgh_signin` / `hzgh_exchange`：设定时（cron）自动跑
-  - `hzgh_login`：会作为一个「任务」出现，但**把它的定时留空 / 禁用**，只手动运行取码，切勿排 cron
-- 依赖规则（第 4 段）：`hzgh_lib_|sendNotify` → 拉取为支持文件，不建任务
+- 白名单（第 2 段）：`hzgh_signin|hzgh_exchange` → 自动建任务，设 cron 自动跑
+- 依赖规则（第 4 段）：`hzgh_lib_|sendNotify|hzgh_login` → 拉取落盘，**不建任务**
+  - 依赖段的文件同样会出现在脚本目录里，`docker exec` 能正常访问 —— 取码工具放这里，
+    既拿得到文件，又不会多出一个每天失败的幽灵任务
 - 改了订阅规则或仓库有新提交后，要在「订阅」里**重新运行一次**才会同步到面板
+
+> 🔁 **从旧配置迁移**：如果你之前按旧 README 把 `hzgh_login` 放在白名单里，面板已经
+> 给它建了一个 cron 为 `0 0 * * *` 的任务。改订阅规则**不会**自动删掉它
+> （多数面板 `auto_del_task` 默认关闭），需要你到「任务管理」里**手动删除**
+> 那个 `hzgh_login` 任务，否则它会继续每晚失败一次。
 
 也可以直接在面板脚本编辑器里手动新建/上传这些文件（`hzgh_signin.js` / `hzgh_exchange.js` /
 `hzgh_lib_*.js` / `sendNotify.js` / `hzgh_login.py`），然后配置环境变量与 cron；
