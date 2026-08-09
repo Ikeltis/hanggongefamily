@@ -1,0 +1,14 @@
+{
+  "name": "hzgh-daidai-panel",
+  "version": "1.0.0",
+  "description": "杭工e家自动签到/查询/定时抢券 —— 适配呆呆面板(daidai-panel)/青龙面板的任务脚本",
+  "private": true,
+  "scripts": {
+    "signin": "node hzgh_signin.js",
+    "exchange": "node hzgh_exchange.js"
+  },
+  "dependencies": {
+    "node-rsa": "^1.1.1"
+  },
+  "license": "MIT"
+}

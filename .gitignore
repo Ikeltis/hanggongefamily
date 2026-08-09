@@ -1,0 +1,4 @@
+node_modules/
+*.log
+temp_response.json
+.DS_Store
