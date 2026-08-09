@@ -90,12 +90,16 @@ npm install
 
 ## 五、用订阅方式拉取（可选）
 
-若你把本目录推到自己的 Git 仓库，可在面板「订阅」中按青龙 `ql repo` 约定拉取，
+本项目已发布在 `https://github.com/Ikeltis/hanggongefamily`（私有仓库）。
+可在面板「订阅」中按青龙 `ql repo` 约定拉取，
 让 `hzgh_signin.js` / `hzgh_exchange.js` 自动成为任务、库文件仅作依赖：
 
 ```
-ql repo <你的仓库地址> "hzgh_signin|hzgh_exchange" "" "hzgh_lib_|sendNotify" "main"
+ql repo https://github.com/Ikeltis/hanggongefamily.git "hzgh_signin|hzgh_exchange" "" "hzgh_lib_|sendNotify" "main"
 ```
+
+> 私有仓库拉取需在面板配置带凭据的地址，例如
+> `https://<用户名>:<token>@github.com/Ikeltis/hanggongefamily.git`。
 
 - 白名单（第 2 段）：`hzgh_signin|hzgh_exchange` → 变成任务
 - 依赖规则（第 4 段）：`hzgh_lib_|sendNotify` → 拉取但不建任务
