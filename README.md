@@ -20,8 +20,11 @@
 | `hzgh_lib_decrypt.js` | 库 | 响应 `data2` 解密（兼容不同 Node 版本，见下文 CVE 说明） |
 | `hzgh_lib_http.js` | 库 | HTTP 请求 + 服务器时间校准 |
 | `sendNotify.js` | 库 | 多通道推送（Bark/TG/Server酱/PushPlus/企业微信/钉钉/飞书） |
+| `hzgh_login.py` | **手动工具** | 短信/密码登录取码，拿到 `login_name`/`ses_id`；也能校验现有 ses_id 是否有效（Python） |
+| `requirements.txt` | 依赖 | `hzgh_login.py` 的 pip 依赖（requests、pycryptodome） |
 
 “任务”文件会被面板识别为定时任务，其余 `hzgh_lib_*` / `sendNotify.js` 是共享库。
+`hzgh_login.py` 是**手动运行**的取码工具（不是定时任务，见第六节）。
 
 ---
 
@@ -35,7 +38,7 @@
 | `HZGH_LOGIN_NAME` | 登录名 `login_name`（从一次成功登录中获取的用户名令牌） |
 | `HZGH_SES_ID` | 会话 ID `ses_id` |
 
-> 获取方式：用原项目的 Python GUI 或 App 抓包登录成功后，复制 `login_name` 与 `ses_id`。
+> 获取方式：见下方「登录取码」一节，用面板自带的 `hzgh_login.py` 登录即可。
 > `ses_id` 会过期，过期后签到/抢券会失败，需要重新获取更新。
 
 ### 可选（签到）
@@ -72,6 +75,40 @@
 ```bash
 npm install
 ```
+
+`hzgh_login.py`（取码工具）另需 Python 依赖，在面板「依赖管理」按 pip 安装
+`requests` 和 `pycryptodome`，或：
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 三点五、登录取码（获取 / 校验 ses_id）
+
+签到与抢券任务不含登录逻辑，需要你先登录拿到 `login_name` 与 `ses_id` 填进环境变量。
+**短信登录必须人工看图形验证码、输手机短信码，无法做成定时任务**，所以 `hzgh_login.py`
+是**手动运行**的工具——在面板的「终端 / 命令行」里跑，不要配 cron。
+
+```bash
+# 短信验证码登录（默认）
+python hzgh_login.py
+
+# 密码登录
+python hzgh_login.py --password
+
+# 校验环境变量里现有 ses_id 是否还有效
+python hzgh_login.py --check
+```
+
+流程（短信登录）：
+
+1. 输入手机号 → 工具打印一行 `data:image/jpeg;base64,...`
+2. **把这一整行粘到浏览器地址栏回车**，就能看到图形验证码（面板终端看不了图片文件，故用 data URL）
+3. 输入图形验证码 → 手机收到短信 → 输入短信验证码
+4. 成功后工具直接打印 `HZGH_LOGIN_NAME` 和 `HZGH_SES_ID`，复制到面板「环境变量」即可
+5. 以后 `ses_id` 失效（签到开始报错），重跑一次本工具、更新 `HZGH_SES_ID` 即可
 
 ---
 
