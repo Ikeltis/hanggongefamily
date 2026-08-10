@@ -61,6 +61,7 @@ ENDPOINTS = {
 }
 
 CHANNEL = "02"
+# 与 hzgh_lib_config.js 的 APP_VER 保持一致，改一处要改两处。
 APP_VER_NO = os.environ.get("HZGH_APP_VER", "3.1.7")
 
 ENCRYPTION_PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----

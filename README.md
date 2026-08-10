@@ -47,7 +47,7 @@
 | `HZGH_SIGNIN_GAP_MS` | `1000` | 每次签到间隔(ms) |
 | `HZGH_COMMENT` | `好` | 评论内容 |
 | `HZGH_COMMENT_RELATED_ID` | `1232` | 评论目标 id |
-| `HZGH_APP_VER` | `3.1.4` | App 版本号 |
+| `HZGH_APP_VER` | `3.1.7` | App 版本号 |
 
 ### 可选（抢券）
 | 变量 | 默认 | 说明 |

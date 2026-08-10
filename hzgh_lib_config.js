@@ -23,7 +23,8 @@ function envInt(name, def) {
 
 const LOGIN_NAME = env('HZGH_LOGIN_NAME');
 const SES_ID = env('HZGH_SES_ID');
-const APP_VER = env('HZGH_APP_VER', '3.1.4');
+// 与 hzgh_login.py 保持一致。两边不一致时可能出现「取码正常但签到失败」这种难查的现象。
+const APP_VER = env('HZGH_APP_VER', '3.1.7');
 
 // 校验必填项
 function assertCredentials() {
