@@ -68,19 +68,11 @@
 
 ## 三、依赖安装
 
-只依赖一个包 `node-rsa`。在面板「依赖管理」里安装 Node 依赖 `node-rsa`，
-或在脚本目录执行：
+面板里只需装一个 Node 依赖 `node-rsa` —— 在「依赖管理」里搜索安装，
+或在脚本目录执行 `npm install`。
 
-```bash
-npm install
-```
-
-`hzgh_login.py`（取码工具）另需 Python 依赖，在面板「依赖管理」按 pip 安装
-`requests` 和 `pycryptodome`，或：
-
-```bash
-pip install -r requirements.txt
-```
+取码工具 `hzgh_login.py` 的 Python 依赖**不用装在面板里**，它在哪台机器上跑就在
+那里装（见第四节）。
 
 ---
 
@@ -88,57 +80,28 @@ pip install -r requirements.txt
 
 签到与抢券任务不含登录逻辑，需要你先登录拿到 `login_name` 与 `ses_id` 填进环境变量。
 
-### 不能在面板里点「运行」
+登录中途要看图形验证码、输手机短信码，**没法在面板里点「运行」** —— 面板的任务
+执行器不给脚本分配 stdin，脚本会直接 `EOFError` 退出。
 
-登录中途要输图形验证码和短信验证码，而面板的任务执行器不给脚本分配 stdin，
-`input()` 会立刻读到 EOF：
-
-```
-请输入登录手机号: Traceback (most recent call last):
-  ...
-EOFError: EOF when reading a line
-=== 退出码 1 ===
-```
-
-必须用 `docker exec -it` 进容器跑，才有交互终端：
+不过这一步**不依赖面板**：它只是自己发几个请求，把两个值打印出来给你复制。
+所以在**任意一台能上网、有 Python 3 的机器**上跑就行（你的电脑、宿主机都可以）：
 
 ```bash
-# 呆呆面板（容器名 daidai-panel）
-docker exec -it daidai-panel \
-  /app/Dumb-Panel/deps/python/3.12/bin/python3 \
-  /app/Dumb-Panel/scripts/Ikeltis_hanggongefamily/hzgh_login.py
-
-# 青龙（容器名 qinglong）
-docker exec -it qinglong python3 /ql/data/scripts/Ikeltis_hanggongefamily/hzgh_login.py
+git clone https://github.com/Ikeltis/hanggongefamily.git
+cd hanggongefamily
+pip install -r requirements.txt
+python3 hzgh_login.py
 ```
 
-> 💡 **别用容器自带的 `python3`**：面板「依赖管理」里 pip 装的包在独立 venv 里
-> （呆呆面板形如 `/app/Dumb-Panel/deps/python/<版本>/`），用系统 `python3` 会报
-> `ModuleNotFoundError: No module named 'requests'`。版本号用
-> `docker exec <容器> ls /app/Dumb-Panel/deps/python/` 确认。
+然后按提示操作：
 
-### 短信登录流程
-
-1. 输入手机号 → 工具打印一行 `data:image/jpeg;base64,...`
-2. **把这一整行粘到浏览器地址栏回车**，就能看到图形验证码（终端里显示不了图片，故用 data URL）
+1. 输入手机号 → 打印出一行 `data:image/jpeg;base64,...`
+2. **把这一整行粘到浏览器地址栏回车**，就能看到图形验证码（终端里显示不了图片）
 3. 输入图形验证码 → 手机收到短信 → 输入短信验证码
-4. 成功后工具直接打印 `HZGH_LOGIN_NAME` 和 `HZGH_SES_ID`，复制到面板「环境变量」即可
-5. 以后 `ses_id` 失效（签到开始报错），重跑一次本工具、更新 `HZGH_SES_ID` 即可
+4. 成功后会直接打印 `HZGH_LOGIN_NAME` 和 `HZGH_SES_ID`，复制到面板「环境变量」即可
 
-### 另外两种用法
-
-在上面那条 `docker exec -it` 命令末尾加参数即可：
-
-- `--password` 用密码登录（仍要输图形验证码）
-- `--check` 校验现有 `ses_id` 是否还有效
-
-`--check` 是唯一无交互的用法，可以去掉 `-it`，方便脚本化检查：
-
-```bash
-docker exec -e HZGH_LOGIN_NAME='...' -e HZGH_SES_ID='...' daidai-panel \
-  /app/Dumb-Panel/deps/python/3.12/bin/python3 \
-  /app/Dumb-Panel/scripts/Ikeltis_hanggongefamily/hzgh_login.py --check
-```
+`ses_id` 会过期（签到突然开始报错就是过期了），重跑一次本工具、更新
+`HZGH_SES_ID` 即可。其他参数见 `python3 hzgh_login.py --help`。
 
 ---
 
