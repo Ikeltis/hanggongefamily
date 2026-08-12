@@ -24,11 +24,11 @@ const sendNotify = require('./sendNotify.js');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-function buildParams(functionName, extra = {}) {
+function buildParams(account, functionName, extra = {}) {
     return {
-        ...CONFIG.commonFields,
+        ...CONFIG.accountFields(account),
         timestamp: Date.now().toString(),
-        ...CONFIG.functions[functionName],
+        ...CONFIG.functionsFor(account)[functionName],
         ...extra,
     };
 }
@@ -36,11 +36,11 @@ function buildParams(functionName, extra = {}) {
 /**
  * 执行一个功能，返回 { ok, msg, raw }
  */
-async function runFunction(functionName, displayName) {
+async function runFunction(account, functionName, displayName) {
     const url = `${CONFIG.baseUrl}${CONFIG.endpoints[functionName]}`;
     console.log(`\n▶ ${displayName} ...`);
     try {
-        const encrypted = encryptRequest(buildParams(functionName), CONFIG.baseUrl);
+        const encrypted = encryptRequest(buildParams(account, functionName), CONFIG.baseUrl);
         const res = await sendRequest(url, encrypted, CONFIG.headersSimple, CONFIG.request.timeout);
         if (res.statusCode !== 200) {
             console.log(`  HTTP ${res.statusCode}`);
@@ -75,30 +75,29 @@ async function runFunction(functionName, displayName) {
     }
 }
 
-async function main() {
-    console.log('🎯 杭工e家 · 每日签到任务');
-    console.log('='.repeat(50));
-    CONFIG.assertCredentials();
-
+/**
+ * 跑完一个账号的全套流程，返回给通知用的文本行。
+ */
+async function runAccount(account) {
     const lines = [];
 
     // 1) 登录签到
-    const login = await runFunction('login', '登录签到');
+    const login = await runFunction(account, 'login', '登录签到');
     lines.push(`登录签到：${login.msg}`);
 
     // 2) N 次日常签到
     for (let i = 1; i <= CONFIG.signinTimes; i++) {
-        const r = await runFunction('signin', `第 ${i} 次日常签到`);
+        const r = await runFunction(account, 'signin', `第 ${i} 次日常签到`);
         lines.push(`第${i}次签到：${r.msg}`);
         if (i < CONFIG.signinTimes) await sleep(CONFIG.signinGapMs);
     }
 
     // 3) 评论
-    const comment = await runFunction('comment', '评论');
+    const comment = await runFunction(account, 'comment', '评论');
     lines.push(`评论：${comment.msg}`);
 
     // 4) 查询积分
-    const query = await runFunction('query', '查询积分');
+    const query = await runFunction(account, 'query', '查询积分');
     // 查询接口通常直接把积分信息放在 raw 里
     let queryLine = `查询：${query.msg}`;
     if (query.raw) {
@@ -107,7 +106,33 @@ async function main() {
     }
     lines.push(queryLine);
 
-    const summary = lines.join('\n');
+    return lines;
+}
+
+async function main() {
+    console.log('🎯 杭工e家 · 每日签到任务');
+    console.log('='.repeat(50));
+    CONFIG.assertCredentials();
+
+    const accounts = CONFIG.accounts;
+    const multi = accounts.length > 1;
+    if (multi) console.log(`共 ${accounts.length} 个账号，逐个执行`);
+
+    const sections = [];
+    for (const account of accounts) {
+        if (multi) console.log(`\n${'─'.repeat(50)}\n👤 ${account.label}`);
+        try {
+            const lines = await runAccount(account);
+            // 单账号时不加标题，输出与以前保持一致
+            sections.push(multi ? `【${account.label}】\n${lines.join('\n')}` : lines.join('\n'));
+        } catch (err) {
+            // 一个账号出问题不能带崩其他账号
+            console.error(`  ${account.label} 异常：${err.message}`);
+            sections.push(`【${account.label}】\n❌ 异常：${err.message}`);
+        }
+    }
+
+    const summary = sections.join('\n\n');
     console.log('\n' + '='.repeat(50));
     console.log('📋 汇总：\n' + summary);
 

@@ -1,10 +1,17 @@
 /**
  * 面板配置模块：所有配置从环境变量读取（兼容青龙/呆呆面板的变量注入）。
- * 单账号版本。作为共享库被任务脚本 require，不单独作为任务运行。
+ * 作为共享库被任务脚本 require，不单独作为任务运行。
  *
  * 必填环境变量：
  *   HZGH_LOGIN_NAME  登录名(login_name)——从一次成功登录中获取的用户名令牌
  *   HZGH_SES_ID      会话ID(ses_id)
+ *
+ * 多账号：两个变量都用 `&` 分隔（也支持换行），按位置一一对应。例如
+ *   HZGH_LOGIN_NAME = 甲的login_name&乙的login_name
+ *   HZGH_SES_ID     = 甲的ses_id&乙的ses_id
+ * 只填一个值就是单账号，跟以前完全一样，老配置不用改。
+ *
+ * 其余参数（签到次数、评论内容、券类型…）是全账号共用的，不做成一账号一套。
  *
  * 可选环境变量见下方 README / 各字段默认值。
  */
@@ -21,46 +28,70 @@ function envInt(name, def) {
     return Number.isFinite(n) ? n : def;
 }
 
-const LOGIN_NAME = env('HZGH_LOGIN_NAME');
-const SES_ID = env('HZGH_SES_ID');
+// 青龙习惯用 & 分隔多账号；面板文本框里手输容易带换行，一并当分隔符处理。
+const ACCOUNT_SEPARATOR = /[&\n\r]+/;
+
+function envList(name) {
+    return env(name).split(ACCOUNT_SEPARATOR).map(s => s.trim()).filter(Boolean);
+}
+
+const LOGIN_NAMES = envList('HZGH_LOGIN_NAME');
+const SES_IDS = envList('HZGH_SES_ID');
 // 与 hzgh_login.py 保持一致。两边不一致时可能出现「取码正常但签到失败」这种难查的现象。
 const APP_VER = env('HZGH_APP_VER', '3.1.7');
+
+/**
+ * 账号列表，按环境变量里的出现顺序一一配对。
+ * 数量不一致时这里不报错，交给 assertCredentials 给出可读的提示。
+ */
+const ACCOUNTS = LOGIN_NAMES.map((loginName, i) => ({
+    index: i + 1,
+    label: `账号${i + 1}`,
+    loginName,
+    sesId: SES_IDS[i],
+}));
 
 // 校验必填项
 function assertCredentials() {
     const missing = [];
-    if (!LOGIN_NAME) missing.push('HZGH_LOGIN_NAME');
-    if (!SES_ID) missing.push('HZGH_SES_ID');
+    if (!LOGIN_NAMES.length) missing.push('HZGH_LOGIN_NAME');
+    if (!SES_IDS.length) missing.push('HZGH_SES_ID');
     if (missing.length) {
         throw new Error(`缺少必填环境变量：${missing.join(', ')}。请在面板「环境变量」中添加后重试。`);
     }
+    // 数量对不上就必须停：否则会把甲的 login_name 和乙的 ses_id 配成一个账号，
+    // 请求还能发出去，但结果是错的，而且很难查。宁可直接失败。
+    if (LOGIN_NAMES.length !== SES_IDS.length) {
+        throw new Error(
+            `多账号配置数量不一致：HZGH_LOGIN_NAME 有 ${LOGIN_NAMES.length} 个，` +
+            `HZGH_SES_ID 有 ${SES_IDS.length} 个。两者必须用 & 分隔并一一对应，` +
+            `否则会把某个账号的 login_name 和另一个账号的 ses_id 配在一起。`
+        );
+    }
 }
 
-module.exports = {
-    // 基础
-    baseUrl: 'https://app.hzgh.org.cn',
-    loginName: LOGIN_NAME,
-    sesId: SES_ID,
+// exchange_id：9=2元券, 10=4元券, 11=6元券
+const EXCHANGE_ID = env('HZGH_EXCHANGE_ID', '10');
 
-    // 公共请求字段（每个请求都会带上）
-    commonFields: {
+/**
+ * 某个账号的公共请求字段（每个请求都会带上）。
+ * 以前这是个模块级常量，多账号后必须按账号现算。
+ */
+function accountFields(account) {
+    return {
         channel: '02',
         app_ver_no: APP_VER,
-        login_name: LOGIN_NAME,
-        ses_id: SES_ID,
-    },
+        login_name: account.loginName,
+        ses_id: account.sesId,
+    };
+}
 
-    // API 端点
-    endpoints: {
-        login: '/unionApp/interf/front/U/U042',
-        signin: '/unionApp/interf/front/U/U042',
-        comment: '/unionApp/interf/front/AC/AC08',
-        query: '/unionApp/interf/front/U/U005',
-        exchange: '/unionApp/interf/front/OL/OL41',
-    },
-
-    // 各功能参数
-    functions: {
+/**
+ * 某个账号的各功能参数。只有 exchange 里的 user_id 与账号相关，
+ * 其余是全账号共用的，但一并按账号返回，调用方不必区分。
+ */
+function functionsFor(account) {
+    return {
         login: { type: '1' },
         signin: { type: '5' },
         comment: {
@@ -71,11 +102,30 @@ module.exports = {
             content: env('HZGH_COMMENT', '好'),
         },
         query: {},
-        // exchange_id：9=2元券, 10=4元券, 11=6元券
         exchange: {
-            user_id: LOGIN_NAME,
-            exchange_id: env('HZGH_EXCHANGE_ID', '10'),
+            user_id: account.loginName,
+            exchange_id: EXCHANGE_ID,
         },
+    };
+}
+
+module.exports = {
+    // 基础
+    baseUrl: 'https://app.hzgh.org.cn',
+
+    // 账号列表（单账号时长度为 1）
+    accounts: ACCOUNTS,
+    accountFields,
+    functionsFor,
+    exchangeId: EXCHANGE_ID,
+
+    // API 端点
+    endpoints: {
+        login: '/unionApp/interf/front/U/U042',
+        signin: '/unionApp/interf/front/U/U042',
+        comment: '/unionApp/interf/front/AC/AC08',
+        query: '/unionApp/interf/front/U/U005',
+        exchange: '/unionApp/interf/front/OL/OL41',
     },
 
     // 签到相关

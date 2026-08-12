@@ -31,11 +31,11 @@ const sendNotify = require('./sendNotify.js');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-function buildExchangeParams() {
+function buildExchangeParams(account) {
     return {
-        ...CONFIG.commonFields,
+        ...CONFIG.accountFields(account),
         timestamp: Date.now().toString(),
-        ...CONFIG.functions.exchange,
+        ...CONFIG.functionsFor(account).exchange,
     };
 }
 
@@ -67,7 +67,7 @@ async function waitUntil(targetLocalMs, offsetMs, leadMs) {
     }
 }
 
-async function executeOnce(params, attempt) {
+async function executeOnce(params, attempt, tag = '') {
     const url = `${CONFIG.baseUrl}${CONFIG.endpoints.exchange}`;
     try {
         const encrypted = encryptRequest(params, CONFIG.baseUrl);
@@ -80,7 +80,7 @@ async function executeOnce(params, attempt) {
         const decrypted = await smartDecrypt(responseJson);
         const data2Json = JSON.parse(decrypted.data2);
         const msg = data2Json.msg || '';
-        console.log(`  第${attempt}次 → ${msg}`);
+        console.log(`  ${tag}第${attempt}次 → ${msg}`);
 
         if (msg === '兑换成功') return { done: true, success: true, msg, raw: data2Json };
         if (msg === '手慢啦，优惠券被抢光了') return { done: true, success: false, msg, raw: data2Json };
@@ -91,73 +91,113 @@ async function executeOnce(params, attempt) {
     }
 }
 
+/**
+ * 单个账号的抢券循环（带硬上限）。
+ * offsetMs / target 由 main 统一算好传进来——校准只做一次，不必每个账号各发一次请求。
+ */
+async function runAccount(account, offsetMs, target, tag) {
+    const ex = CONFIG.exchange;
+
+    if (target != null) {
+        const serverNow = Date.now() + offsetMs;
+        if (target - serverNow > 0) await waitUntil(target, offsetMs, ex.leadMs);
+    }
+
+    const startMs = Date.now();
+    let attempt = 0;
+    let last = null;
+    while (true) {
+        attempt++;
+        last = await executeOnce(buildExchangeParams(account), attempt, tag);
+        if (last.done) break;
+
+        if (Date.now() - startMs >= ex.maxDurationMs) {
+            console.log(`⏹️  ${tag}达到最大时长 ${ex.maxDurationMs}ms，停止`);
+            break;
+        }
+        if (attempt >= ex.maxAttempts) {
+            console.log(`⏹️  ${tag}达到最大次数 ${ex.maxAttempts}，停止`);
+            break;
+        }
+        await sleep(ex.intervalMs);
+    }
+
+    return { account, last, attempt, elapsed: Date.now() - startMs };
+}
+
+/** 把单个账号的结果转成一行文字。 */
+function describe(result) {
+    const { last, attempt, elapsed } = result;
+    const outcome = last && last.done
+        ? `${last.success ? '✅' : '❌'} ${last.msg}`
+        : `⏹️ 未出最终结果（最后响应：${last ? last.msg : '无'}）`;
+    return `${outcome}\n尝试次数：${attempt}　耗时：${elapsed}ms`;
+}
+
 async function main() {
     console.log('🚀 杭工e家 · 定时抢券');
     console.log('='.repeat(50));
     CONFIG.assertCredentials();
 
     const ex = CONFIG.exchange;
-    console.log(`券类型 exchange_id=${CONFIG.functions.exchange.exchange_id}（9=2元,10=4元,11=6元）`);
+    const accounts = CONFIG.accounts;
+    const multi = accounts.length > 1;
+    console.log(`券类型 exchange_id=${CONFIG.exchangeId}（9=2元,10=4元,11=6元）`);
+    if (multi) console.log(`共 ${accounts.length} 个账号，将同时开抢`);
 
-    // 时间校准
+    // 时间校准：只做一次，所有账号共用同一个偏移量
     let offsetMs = 0;
     if (ex.targetTime && ex.calibrate) {
         offsetMs = await getServerTimeOffset(CONFIG.baseUrl);
         console.log(`⏱️  服务器时间偏移：${offsetMs}ms`);
     }
 
-    // 等待到点
+    // 解析目标时刻（null 表示立即开抢）
+    let target = null;
     if (ex.targetTime) {
-        const target = parseTargetToday(ex.targetTime);
+        target = parseTargetToday(ex.targetTime);
         if (target == null) {
             console.log(`⚠️  HZGH_EXCHANGE_TIME 格式无效（应为 HH:MM:SS）：${ex.targetTime}，将立即开抢`);
+        } else if (target - (Date.now() + offsetMs) > 0) {
+            console.log(`🕒 目标开抢：${ex.targetTime}（提前 ${ex.leadMs}ms 发枪），等待中...`);
         } else {
-            const serverNow = Date.now() + offsetMs;
-            if (target - serverNow > 0) {
-                console.log(`🕒 目标开抢：${ex.targetTime}（提前 ${ex.leadMs}ms 发枪），等待中...`);
-                await waitUntil(target, offsetMs, ex.leadMs);
-            } else {
-                console.log(`🕒 目标时刻已过，立即开抢`);
-            }
+            console.log('🕒 目标时刻已过，立即开抢');
         }
     } else {
         console.log('🕒 未设置目标时刻，立即开抢');
     }
 
-    // 抢券循环（带硬上限）
+    // 所有账号并发开抢。抢券是掐点的：串行的话第二个账号要等第一个的窗口
+    // （默认 15 秒）跑完才开始，整场都错过了。
     console.log('🔫 开抢！');
-    const startMs = Date.now();
-    let attempt = 0;
-    let last = null;
-    while (true) {
-        attempt++;
-        const params = buildExchangeParams();
-        last = await executeOnce(params, attempt);
-        if (last.done) break;
-
-        if (Date.now() - startMs >= ex.maxDurationMs) {
-            console.log(`⏹️  达到最大时长 ${ex.maxDurationMs}ms，停止`);
-            break;
-        }
-        if (attempt >= ex.maxAttempts) {
-            console.log(`⏹️  达到最大次数 ${ex.maxAttempts}，停止`);
-            break;
-        }
-        await sleep(ex.intervalMs);
-    }
+    const results = await Promise.all(accounts.map(account =>
+        runAccount(account, offsetMs, target, multi ? `[${account.label}] ` : '')
+            .catch(err => ({ account, error: err, attempt: 0, elapsed: 0, last: null }))
+    ));
 
     // 汇总通知
-    const elapsed = Date.now() - startMs;
+    const anySuccess = results.some(r => r.last && r.last.done && r.last.success);
     let title, body;
-    if (last && last.done && last.success) {
-        title = '杭工e家 · 抢券成功 🎉';
-        body = `结果：${last.msg}\n尝试次数：${attempt}\n耗时：${elapsed}ms`;
-    } else if (last && last.done && !last.success) {
-        title = '杭工e家 · 抢券结束（手慢啦）';
-        body = `结果：${last.msg}\n尝试次数：${attempt}\n耗时：${elapsed}ms`;
+    if (multi) {
+        const okCount = results.filter(r => r.last && r.last.done && r.last.success).length;
+        title = okCount > 0
+            ? `杭工e家 · 抢券 ${okCount}/${accounts.length} 成功 🎉`
+            : '杭工e家 · 抢券结束（无人成功）';
+        body = results.map(r => r.error
+            ? `【${r.account.label}】\n❌ 异常：${r.error.message}`
+            : `【${r.account.label}】\n${describe(r)}`
+        ).join('\n\n');
     } else {
-        title = '杭工e家 · 抢券结束（未成功）';
-        body = `最后响应：${last ? last.msg : '无'}\n尝试次数：${attempt}\n耗时：${elapsed}ms`;
+        const r = results[0];
+        if (r.error) {
+            title = '杭工e家 · 抢券异常';
+            body = `❌ 异常：${r.error.message}`;
+        } else {
+            title = anySuccess ? '杭工e家 · 抢券成功 🎉'
+                : (r.last && r.last.done) ? '杭工e家 · 抢券结束（手慢啦）'
+                : '杭工e家 · 抢券结束（未成功）';
+            body = describe(r);
+        }
     }
     console.log('\n' + '='.repeat(50));
     console.log(`📋 ${title}\n${body}`);
