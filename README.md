@@ -1,8 +1,11 @@
-# 杭工e家 · 呆呆面板/青龙脚本（hanggongefamily）
+# 杭工e家 · 呆呆面板脚本（hanggongefamily）
 
 把 [AutoTicket](https://github.com/BAOfanTing/AutoTicket) 的 JS 逻辑改造成适配
-[呆呆面板 daidai-panel](https://github.com/linzixuanzz/daidai-panel)（类青龙）的定时任务脚本。
+[呆呆面板 daidai-panel](https://github.com/linzixuanzz/daidai-panel) 的定时任务脚本。
 支持多账号。
+
+> 通知直接用面板自带的推送渠道，所以**只适用于呆呆面板**。搬到青龙需要自己往脚本
+> 目录放一个 `sendNotify.js`（导出 `{ sendNotify }`），否则 require 阶段就会失败。
 
 > ⚠️ 本项目基于 API 逆向，仅供学习研究。请遵守当地法律法规及杭工e家 App 的用户协议，风险自负。
 
@@ -18,11 +21,10 @@
 | `hzgh_lib_encrypt.js` | 库 | RSA + 3DES 请求加密/签名（逆向所得，未改动） |
 | `hzgh_lib_decrypt.js` | 库 | 响应 `data2` 解密（兼容不同 Node 版本，见第七节 CVE 说明） |
 | `hzgh_lib_http.js` | 库 | HTTP 请求 + 服务器时间校准 |
-| `sendNotify.js` | 库 | 多通道推送（Bark/TG/Server酱/PushPlus/企业微信/钉钉/飞书） |
 | `hzgh_login.py` | **手动工具** | 短信/密码登录取码，拿到 `login_name`/`ses_id`；也能校验现有 ses_id 是否有效（Python） |
 | `requirements.txt` | 依赖 | `hzgh_login.py` 的 pip 依赖（requests、pycryptodome） |
 
-「任务」文件会被面板识别为定时任务，其余 `hzgh_lib_*` / `sendNotify.js` 是共享库。
+「任务」文件会被面板识别为定时任务，`hzgh_lib_*` 是共享库。
 `hzgh_login.py` 是**手动运行**的取码工具，**不能作为面板任务运行**（原因见「四、登录取码」）。
 
 ---
@@ -77,9 +79,8 @@ HZGH_SES_ID     = 甲的ses_id&乙的ses_id
 | `HZGH_EXCHANGE_MAX_MS` | `15000` | 最长持续时长(ms)，到点即停 |
 | `HZGH_EXCHANGE_MAX_ATTEMPTS` | `200` | 最大尝试次数 |
 
-### 可选（通知）
-默认直接复用面板「通知设置」里配好的渠道，不用配。想单独指定推送通道时，
-可用环境变量覆盖，变量名见 `sendNotify.js` 头部。
+### 通知
+不用配。结果直接推到面板「通知设置」里已配好的渠道。
 
 ---
 
@@ -139,7 +140,7 @@ python3 hzgh_login.py
 ## 六、用订阅方式拉取（可选）
 
 ```
-ql repo https://github.com/Ikeltis/hanggongefamily.git "hzgh_signin|hzgh_exchange" "" "hzgh_lib_|sendNotify|hzgh_login" "main"
+ql repo https://github.com/Ikeltis/hanggongefamily.git "hzgh_signin|hzgh_exchange" "" "hzgh_lib_|hzgh_login" "main"
 ```
 
 注意 `hzgh_login` 在依赖段而不是白名单 —— 它是手动运行的取码工具（见第四节），
