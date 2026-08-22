@@ -27,7 +27,9 @@ const CONFIG = require('./hzgh_lib_config.js');
 const { encryptRequest, isSlowResponse } = require('./hzgh_lib_encrypt.js');
 const { smartDecrypt } = require('./hzgh_lib_decrypt.js');
 const { sendRequest, getServerTimeOffset } = require('./hzgh_lib_http.js');
-const sendNotify = require('./sendNotify.js');
+// 通知交给面板：本仓库不再自带 sendNotify.js，面板会把这个 require 指向它自己的
+// 托管版（导出的是对象，所以必须解构，直接当函数用会 TypeError）。
+const { sendNotify } = require('./sendNotify.js');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

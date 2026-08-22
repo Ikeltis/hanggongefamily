@@ -8,7 +8,7 @@ cron: 19 9 * * *
  * 流程：登录签到 → N 次日常签到 → 1 次评论 → 1 次查询积分
  * 结果汇总为「一条」通知推送（区别于原脚本每步都推）。
  *
- * 定时：上面那行 `cron:` 是订阅建任务时面板/青龙自动采用的声明。
+ * 定时：上面那行 `cron:` 是订阅建任务时面板自动采用的声明。
  *       格式必须是「行首 + ASCII 冒号」的 `cron: <5 段表达式>`；
  *       写成「cron 建议：…」这类中文说明是解析不到的，任务会被塞默认值
  *       `0 0 * * *`（本仓库之前就踩过这个坑）。
@@ -20,7 +20,9 @@ const CONFIG = require('./hzgh_lib_config.js');
 const { encryptRequest } = require('./hzgh_lib_encrypt.js');
 const { smartDecrypt } = require('./hzgh_lib_decrypt.js');
 const { sendRequest } = require('./hzgh_lib_http.js');
-const sendNotify = require('./sendNotify.js');
+// 通知交给面板：本仓库不再自带 sendNotify.js，面板会把这个 require 指向它自己的
+// 托管版（导出的是对象，所以必须解构，直接当函数用会 TypeError）。
+const { sendNotify } = require('./sendNotify.js');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
